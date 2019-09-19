@@ -1,0 +1,119 @@
+https://raspberrypi.stackexchange.com/questions/61732/presenting-http-service-securely-with-https
+
+Right, I got there in the end!
+Using Apache 2.2.22
+SSL Proxy Configuration
+Install Apache2
+sudo apt-get install apache2
+Enable Apache2 Modules for Proxying & SSL
+sudo a2enmod proxy
+sudo a2enmod proxy_http
+sudo a2enmod ssl
+Create directory and SSL Cert
+sudo mkdir /etc/apache2/ssl/
+
+sudo openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/apache2/ssl/puppycam.key -out /etc/apache2/ssl/puppycam.crt
+Configured as follows:
+Country Name (2 letter code) [AU]:UK
+State or Province Name (full name) [Some-State]:Berkshire
+Locality Name (eg, city) []:Tilehurst
+Organization Name (eg, company) [Internet Widgits Pty Ltd]:mysite
+Organizational Unit Name (eg, section) []:
+Common Name (e.g. server FQDN or YOUR name) []:puppycam.mysite.com
+Email Address []:administrator@mysite.com
+Create VirtualHost File for service:
+sudo vim /etc/apache2/sites-available/001-SecureWebcam.conf
+Contents:
+<VirtualHost *:443>
+
+
+ProxyRequests Off
+SSLProxyEngine On
+
+<Proxy *>
+  Order deny,allow
+  Allow from all
+</Proxy>
+
+
+ProxyPass / http://192.168.1.20:8081/
+#ProxyPassReverse / http://192.168.1.20:8081/
+
+<Location /proxy/>
+  ProxyPassReverse /
+  Order deny,allow
+  Allow from all
+</Location>
+        ServerAdmin webmaster@localhost
+        ErrorLog ${APACHE_LOG_DIR}/error.log
+        CustomLog ${APACHE_LOG_DIR}/access.log combined
+
+                SSLEngine on
+
+                SSLCertificateFile      /etc/apache2/ssl/puppycam.crt
+                SSLCertificateKeyFile /etc/apache2/ssl/puppycam.key
+
+
+
+
+
+                <FilesMatch "\.(cgi|shtml|phtml|php)$">
+                                SSLOptions +StdEnvVars
+                </FilesMatch>
+                <Directory /usr/lib/cgi-bin>
+                                SSLOptions +StdEnvVars
+                </Directory>
+
+                BrowserMatch "MSIE [2-6]" \
+                                nokeepalive ssl-unclean-shutdown \
+                                downgrade-1.0 force-response-1.0
+                BrowserMatch "MSIE [17-9]" ssl-unclean-shutdown
+
+
+
+</VirtualHost>
+Enable Site
+sudo ln -s /etc/apache2/sites-available/001-SecureWebcam.conf /etc/apache2/sites-enabled/001-SecureWebcam.conf 
+Restart Apache
+sudo service apache2 restart
+Test access to webcam from https://192.168.1.22 (internal address of Apache server)
+Install & Configure Dynamic DNS (for Google Domains)
+Accept all defaults - we wil change later
+sudo apt-get install ddclient
+Edit the ddclient config
+sudo vim /etc/ddclient.conf
+Contents:
+ssl=yes
+protocol=googledomains
+use=web
+server=domains.google.com
+login=thisisasecret
+password='thisisalsoasecret'
+puppycam.mysite.com
+Security Configuration
+Create a directory for the password file
+sudo mkdir /etc/htpasswd/
+Add a user to the password file
+sudo htpasswd -c /etc/htpasswd/.htpasswd james
+Edit the VirtualHost configuration to add authentication:
+sudo vim /etc/apache2/sites-available/001-SecureWebcam.conf
+Modify the <Proxy *> section as follows:
+...
+<Proxy *>
+  AuthType Basic
+  AuthName "Authentication Required"
+  AuthUserFile "/etc/htpasswd/.htpasswd"
+  Require valid-user
+  Order deny,allow
+  Allow from all
+</Proxy>
+...
+Enable the appropriate authentication modules:
+sudo a2enmod authn_file
+sudo a2enmod auth_basic
+Restart Apache2
+sudo service apache2 restart
+Mop Up Actions
+Perform network capture to be sure allk traffic is secure (no plain text password)
+Configure Port Forwarding on router
+Test remote access
